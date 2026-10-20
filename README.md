@@ -2,9 +2,12 @@
 
 An iPhone app that shows the front TrueDepth (Face ID) camera's depth as horizontal lines.
 
-- 100 horizontal lines connect raw depth points (no smoothing). Lines rise where things are closer
+<p align="center"><img src="docs/screenshot.png" alt="Depth Scanner showing a person's head as raised horizontal lines" width="300"></p>
+
+- 100 horizontal lines connect raw depth points. Lines rise where things are closer
   (height = 20 cm ÷ distance, so the full range is shown). Lower lines hide the ones behind them.
 - **Height** and **Thickness** sliders.
+- **Smooth depth** toggle: fills holes in the depth map using the color image (off = raw sensor data).
 - **Capture** freezes the view and grabs a full-resolution 3D point cloud (up to ~300k points).
   **Export PLY** shares it as a `.ply` file for Blender, MeshLab or CloudCompare.
 

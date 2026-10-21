@@ -1,9 +1,10 @@
+import AVFoundation
 import UIKit
 
-/// Turns the phone's brightness all the way down and back up again.
-/// Handy with an external display: the mirrored picture stays at full brightness.
-final class ScreenDimmer: ObservableObject {
-    @Published var isDimmed = false {
+/// Turns the phone's brightness all the way down while a cable display is plugged in, and back up
+/// when it's unplugged. The mirrored picture on the display stays at full brightness.
+final class ScreenDimmer {
+    private var displayConnected = false {
         didSet { apply() }
     }
 
@@ -22,12 +23,22 @@ final class ScreenDimmer: ObservableObject {
             self?.isActive = true
             self?.apply()
         }
+        // iOS doesn't tell the app about a cable display directly, but it shows up as an HDMI audio output.
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.checkDisplay()
+        }
+        checkDisplay()
+    }
+
+    private func checkDisplay() {
+        let connected = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .HDMI }
+        if connected != displayConnected { displayConnected = connected }
     }
 
     private func apply() {
         guard let screen = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene }).first?.screen else { return }
-        if isDimmed && isActive {
+        if displayConnected && isActive {
             if savedBrightness == nil { savedBrightness = screen.brightness }
             screen.brightness = 0
         } else if let saved = savedBrightness {

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var model = DepthViewModel()
-    @StateObject private var dimmer = ScreenDimmer()
+    @State private var dimmer = ScreenDimmer()
     /// Compact height = iPhone in landscape.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -24,15 +24,6 @@ struct ContentView: View {
             }
         }
         .background(Color.black)
-        .overlay {
-            // While dimmed, any touch brightens the screen again (and does nothing else).
-            if dimmer.isDimmed {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture { dimmer.isDimmed = false }
-            }
-        }
         .onAppear {
             model.watchOrientation()
             model.start()
@@ -122,12 +113,6 @@ struct ContentView: View {
                     Label("Mirror", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                 }
                 .toggleStyle(.button)
-                .buttonStyle(.bordered)
-                .labelStyle(.iconOnly)
-
-                Button { dimmer.isDimmed = true } label: {
-                    Label("Dim screen", systemImage: "sun.min")
-                }
                 .buttonStyle(.bordered)
                 .labelStyle(.iconOnly)
             }

@@ -2,33 +2,29 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var model = DepthViewModel()
+    /// Compact height = iPhone in landscape.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The lines fill everything from the top of the screen down to the controls;
-            // the sides are cropped to fit.
-            Color.black.overlay {
-                switch model.status {
-                case .starting:
-                    ProgressView("Starting camera…")
-                case .denied:
-                    message("Camera access is off",
-                            "Turn it on in Settings → Privacy & Security → Camera.")
-                case .failed(let reason):
-                    message("Camera unavailable", reason)
-                case .running:
-                    depthView
+        Group {
+            if verticalSizeClass == .compact {
+                // Landscape: just the picture, full screen, no controls.
+                picture
+                    .ignoresSafeArea()
+            } else {
+                // Portrait: the picture fills everything from the top of the screen down to the controls.
+                VStack(spacing: 0) {
+                    picture
+                        .ignoresSafeArea(edges: .top)
+                    controls
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
                 }
             }
-            .clipped()
-            .ignoresSafeArea(edges: .top)
-
-            controls
-                .padding(.top, 6)
-                .padding(.bottom, 4)
         }
         .background(Color.black)
         .onAppear {
+            model.watchOrientation()
             model.start()
             UIApplication.shared.isIdleTimerDisabled = true
         }
@@ -45,13 +41,36 @@ struct ContentView: View {
         }
     }
 
+    /// The lines, or a status message. The sides (or top and bottom) are cropped to fit.
+    private var picture: some View {
+        Color.black.overlay {
+            switch model.status {
+            case .starting:
+                ProgressView("Starting camera…")
+            case .denied:
+                message("Camera access is off",
+                        "Turn it on in Settings → Privacy & Security → Camera.")
+            case .failed(let reason):
+                message("Camera unavailable", reason)
+            case .running:
+                depthView
+            }
+        }
+        .clipped()
+    }
+
     private var depthView: some View {
         // The lines may be larger than the visible area; the parent crops the sides.
         Color.clear
             .overlay {
                 if let lines = model.lines {
                     DepthLinesView(lines: lines, relief: model.relief, thickness: model.lineWidth,
-                                   topRise: model.topRise, bottomRise: model.bottomRise)
+                                   topRise: model.topRise, bottomRise: model.bottomRise,
+                                   // Landscape screens are much wider than the camera's 4:3 picture;
+                                   // filling would crop off the top and bottom, so show it whole.
+                                   contentMode: verticalSizeClass == .compact ? .fit : .fill)
+                        // The lines arrive mirrored like a selfie; flip them back when Mirror is off.
+                        .scaleEffect(x: model.mirrored ? 1 : -1)
                 }
             }
     }
@@ -88,6 +107,13 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+
+                Toggle(isOn: $model.mirrored) {
+                    Label("Mirror", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .labelStyle(.iconOnly)
             }
             .controlSize(.large)
 

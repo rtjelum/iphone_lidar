@@ -8,6 +8,8 @@ An iPhone app that shows the front TrueDepth (Face ID) camera's depth as horizon
   (height = 20 cm ÷ distance, so the full range is shown). Lower lines hide the ones behind them.
 - **Height** and **Thickness** sliders.
 - **Smooth depth** toggle: fills holes in the depth map using the color image (off = raw sensor data).
+- **Mirror** button (next to Capture): mirrored like a selfie when on (default); off shows the true left/right.
+- Works in portrait and landscape. Landscape shows just the picture, full screen (rotate back to portrait for the controls).
 - **Capture** freezes the view and grabs a full-resolution 3D point cloud (up to ~300k points).
   **Export PLY** shares it as a `.ply` file for Blender, MeshLab or CloudCompare.
 

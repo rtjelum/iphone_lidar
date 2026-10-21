@@ -2,7 +2,16 @@ import AVFoundation
 import CoreGraphics
 import simd
 
-/// Raw depth samples for the lines view, already turned upright (portrait, mirrored like a selfie).
+/// Which way the screen is turned. The depth image is rotated to match so it stays upright.
+enum ScreenOrientation {
+    case portrait
+    /// Dynamic Island / camera on the right.
+    case landscapeLeft
+    /// Dynamic Island / camera on the left.
+    case landscapeRight
+}
+
+/// Raw depth samples for the lines view, already turned upright for the screen (mirrored like a selfie).
 struct DepthLines {
     let rows: Int
     let cols: Int
@@ -45,6 +54,7 @@ enum DepthProcessor {
     static func process(depthData: AVDepthData,
                         video: CVPixelBuffer?,
                         cloudStride: Int?,
+                        orientation: ScreenOrientation,
                         fallbackFOV: Float) -> ProcessedFrame {
         let depthMap = depthData.depthDataMap
         CVPixelBufferLockBaseAddress(depthMap, .readOnly)
@@ -57,10 +67,10 @@ enum DepthProcessor {
                               rowBytes: CVPixelBufferGetBytesPerRow(depthMap))
 
         var frame = ProcessedFrame()
-        frame.lines = makeLines(depth)
+        frame.lines = makeLines(depth, orientation: orientation)
         if let step = cloudStride {
             let k = intrinsics(for: depthData, width: depth.width, height: depth.height, fallbackFOV: fallbackFOV)
-            frame.cloud = makeCloud(depth, intrinsics: k, video: video, step: step)
+            frame.cloud = makeCloud(depth, intrinsics: k, video: video, step: step, orientation: orientation)
         }
         return frame
     }
@@ -73,23 +83,37 @@ enum DepthProcessor {
 
     /// Picks one raw sensor pixel per point (no averaging), on a grid of horizontal lines.
     /// Height = 20 cm / depth, so the full range is shown with no cutoff.
-    static func makeLines(_ depth: DepthGrid, rows: Int = 100, cols: Int = 160) -> DepthLines {
-        // The upright image is the buffer transposed (like a UIImage with .leftMirrored orientation):
-        // upright x = buffer row, upright y = buffer column.
-        let uprightWidth = depth.height
-        let uprightHeight = depth.width
+    static func makeLines(_ depth: DepthGrid, orientation: ScreenOrientation,
+                          rows: Int = 100, cols: Int = 160) -> DepthLines {
+        let w = depth.width, h = depth.height
+        // Map a screen position (u = 0...1 left to right, v = 0...1 top to bottom) to a buffer pixel.
+        // Portrait: the buffer transposed (like a UIImage with .leftMirrored orientation),
+        // so screen x = buffer row and screen y = buffer column. Landscape turns that by ±90°.
+        let pixel: (Float, Float) -> (row: Int, col: Int)
+        let aspect: CGFloat
+        switch orientation {
+        case .portrait:
+            pixel = { u, v in (Int(u * Float(h - 1)), Int(v * Float(w))) }
+            aspect = CGFloat(h) / CGFloat(w)
+        case .landscapeRight:
+            pixel = { u, v in (h - 1 - Int(v * Float(h)), Int(u * Float(w - 1))) }
+            aspect = CGFloat(w) / CGFloat(h)
+        case .landscapeLeft:
+            pixel = { u, v in (Int(v * Float(h)), w - 1 - Int(u * Float(w - 1))) }
+            aspect = CGFloat(w) / CGFloat(h)
+        }
+
         var nearness = [Float](repeating: .nan, count: rows * cols)
         for r in 0..<rows {
-            let bufferCol = min(depth.width - 1, Int((Float(r) + 0.5) / Float(rows) * Float(uprightHeight)))
+            let v = (Float(r) + 0.5) / Float(rows)
             for c in 0..<cols {
-                let bufferRow = min(depth.height - 1, Int(Float(c) / Float(cols - 1) * Float(uprightWidth - 1)))
-                let d = depth.row(bufferRow)[bufferCol]
+                let (row, col) = pixel(Float(c) / Float(cols - 1), v)
+                let d = depth.row(min(max(row, 0), h - 1))[min(max(col, 0), w - 1)]
                 guard d.isFinite, d > minDepth else { continue }
                 nearness[r * cols + c] = min(1, linesReferenceDepth / d)
             }
         }
-        return DepthLines(rows: rows, cols: cols, nearness: nearness,
-                          aspect: CGFloat(uprightWidth) / CGFloat(uprightHeight))
+        return DepthLines(rows: rows, cols: cols, nearness: nearness, aspect: aspect)
     }
 
     // MARK: - Point cloud
@@ -111,7 +135,8 @@ enum DepthProcessor {
     static func makeCloud(_ depth: DepthGrid,
                           intrinsics k: CameraIntrinsics,
                           video: CVPixelBuffer?,
-                          step: Int) -> PointCloud {
+                          step: Int,
+                          orientation: ScreenOrientation) -> PointCloud {
         var cloud = PointCloud()
         let estimate = (depth.width / step) * (depth.height / step)
         cloud.positions.reserveCapacity(estimate)
@@ -145,9 +170,15 @@ enum DepthProcessor {
                 // Camera space: X along buffer columns, Y along buffer rows, Z forward.
                 let camX = (Float(x) - k.cx) * d / k.fx
                 let camY = (Float(y) - k.cy) * d / k.fy
-                // The front camera's buffer is sideways relative to a portrait phone.
-                // Rotate it upright: x right, y up, z toward the viewer.
-                cloud.positions.append(SIMD3(-camY, -camX, -d))
+                // The front camera's buffer is sideways relative to the screen.
+                // Rotate it upright for the current orientation: x right, y up, z toward the viewer.
+                let p: SIMD3<Float>
+                switch orientation {
+                case .portrait: p = SIMD3(-camY, -camX, -d)
+                case .landscapeRight: p = SIMD3(-camX, camY, -d)
+                case .landscapeLeft: p = SIMD3(camX, -camY, -d)
+                }
+                cloud.positions.append(p)
                 cloud.colors.append(colorAt(x, y))
             }
         }

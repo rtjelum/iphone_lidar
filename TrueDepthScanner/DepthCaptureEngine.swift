@@ -18,6 +18,7 @@ final class DepthCaptureEngine: NSObject, AVCaptureDataOutputSynchronizerDelegat
     struct Settings {
         var paused = false
         var captureNext = false
+        var orientation = ScreenOrientation.portrait
     }
 
     var onFrame: ((ProcessedFrame, _ isCapture: Bool) -> Void)?
@@ -127,20 +128,20 @@ final class DepthCaptureEngine: NSObject, AVCaptureDataOutputSynchronizerDelegat
         case capture
     }
 
-    private func nextMode() -> FrameMode {
+    private func nextMode() -> (FrameMode, ScreenOrientation) {
         lock.lock()
         defer { lock.unlock() }
         if settings.captureNext {
             settings.captureNext = false
             settings.paused = true
             waitingForUI = true
-            return .capture
+            return (.capture, settings.orientation)
         }
         // Skip frames while paused, or while the screen is still busy with the previous one
         // (otherwise frames pile up and the view lags further and further behind).
-        if settings.paused || waitingForUI { return .skip }
+        if settings.paused || waitingForUI { return (.skip, settings.orientation) }
         waitingForUI = true
-        return .live
+        return (.live, settings.orientation)
     }
 
     func dataOutputSynchronizer(_ synchronizer: AVCaptureDataOutputSynchronizer,
@@ -149,7 +150,8 @@ final class DepthCaptureEngine: NSObject, AVCaptureDataOutputSynchronizerDelegat
               !syncedDepth.depthDataWasDropped else { return }
 
         let isCapture: Bool
-        switch nextMode() {
+        let (mode, orientation) = nextMode()
+        switch mode {
         case .skip: return
         case .live: isCapture = false
         case .capture: isCapture = true
@@ -168,6 +170,7 @@ final class DepthCaptureEngine: NSObject, AVCaptureDataOutputSynchronizerDelegat
         let frame = DepthProcessor.process(depthData: depthData,
                                            video: videoBuffer,
                                            cloudStride: cloudStride,
+                                           orientation: orientation,
                                            fallbackFOV: fieldOfView)
         onFrame?(frame, isCapture)
     }

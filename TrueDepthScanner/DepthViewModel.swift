@@ -27,12 +27,16 @@ final class DepthViewModel: ObservableObject {
     @Published var exportFile: ExportFile?
     @Published var errorMessage: String?
 
+    /// Show the picture mirrored, like a selfie (only affects the display, not exports).
+    @Published var mirrored = true
+
     @Published var smoothing = false {
         didSet { engine.setFiltering(smoothing) }
     }
 
     private let engine = DepthCaptureEngine()
     private var cloudCounter = 0
+    private var orientationObservation: NSKeyValueObservation?
 
     init() {
         engine.onFrame = { [weak self] frame, isCapture in
@@ -52,6 +56,22 @@ final class DepthViewModel: ObservableObject {
             }
         default:
             status = .denied
+        }
+    }
+
+    /// Keeps the depth image upright as the screen rotates.
+    func watchOrientation() {
+        guard orientationObservation == nil,
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+        else { return }
+        orientationObservation = scene.observe(\.effectiveGeometry, options: [.initial, .new]) { [weak self] scene, _ in
+            let orientation: ScreenOrientation
+            switch scene.effectiveGeometry.interfaceOrientation {
+            case .landscapeLeft: orientation = .landscapeLeft
+            case .landscapeRight: orientation = .landscapeRight
+            default: orientation = .portrait
+            }
+            self?.engine.update { $0.orientation = orientation }
         }
     }
 

@@ -14,6 +14,8 @@ struct DepthLinesView: View {
     /// top line sits at the top edge and the bottom line at the bottom edge, with no empty bands.
     var topRise: Double = 0
     var bottomRise: Double = 0
+    /// .fill crops the edges to cover the space; .fit shows the whole picture with black bars.
+    var contentMode: ContentMode = .fill
 
     /// Grayscale: far = dim gray, near = white.
     private static let gradient = Gradient(colors: [Color(white: 0.35), Color(white: 1.0)])
@@ -67,8 +69,8 @@ struct DepthLinesView: View {
                 drawSegment()
             }
         }
-        // Fill the space it's given, keeping the camera's shape (edges may be cropped by the parent).
-        .aspectRatio(lines.aspect, contentMode: .fill)
+        // Keep the camera's shape. With .fill the parent crops the edges.
+        .aspectRatio(lines.aspect, contentMode: contentMode)
         .drawingGroup()
     }
 }

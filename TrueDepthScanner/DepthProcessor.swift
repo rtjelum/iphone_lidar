@@ -141,6 +141,10 @@ enum DepthProcessor {
         let estimate = (depth.width / step) * (depth.height / step)
         cloud.positions.reserveCapacity(estimate)
         cloud.colors.reserveCapacity(estimate)
+        let gridColumns = (depth.width + step - 1) / step
+        let gridRows = (depth.height + step - 1) / step
+        cloud.gridColumns = gridColumns
+        cloud.grid = Array(repeating: -1, count: gridColumns * gridRows)
 
         if let video { CVPixelBufferLockBaseAddress(video, .readOnly) }
         defer { if let video { CVPixelBufferUnlockBaseAddress(video, .readOnly) } }
@@ -167,6 +171,7 @@ enum DepthProcessor {
             for x in stride(from: 0, to: depth.width, by: step) {
                 let d = row[x]
                 guard d.isFinite, d > minDepth else { continue }
+                cloud.grid[(y / step) * gridColumns + x / step] = Int32(cloud.positions.count)
                 // Camera space: X along buffer columns, Y along buffer rows, Z forward.
                 let camX = (Float(x) - k.cx) * d / k.fx
                 let camY = (Float(y) - k.cy) * d / k.fy

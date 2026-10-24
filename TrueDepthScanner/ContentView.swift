@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var model = DepthViewModel()
     @State private var dimmer = ScreenDimmer()
+    /// After a capture: show the captured points in 3D instead of the lines.
+    @State private var show3D = false
     /// Compact height = iPhone in landscape.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -30,6 +32,10 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = true
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // Open the 3D viewer as soon as a capture arrives.
+        .onChange(of: model.isCaptured) { _, captured in
+            if captured { show3D = true }
+        }
         .sheet(item: $model.exportFile) { file in
             ShareSheet(url: file.url)
         }
@@ -54,7 +60,11 @@ struct ContentView: View {
             case .failed(let reason):
                 message("Camera unavailable", reason)
             case .running:
-                depthView
+                if show3D && model.isCaptured {
+                    PointCloudView(cloud: model.cloud, mirrored: model.mirrored)
+                } else {
+                    depthView
+                }
             }
         }
         .clipped()
@@ -90,7 +100,7 @@ struct ContentView: View {
 
             HStack {
                 if model.isCaptured {
-                    Button { model.resume() } label: {
+                    Button { show3D = false; model.resume() } label: {
                         Label("Resume", systemImage: "play.fill").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -109,6 +119,16 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
+                if model.isCaptured {
+                    Toggle(isOn: $show3D) {
+                        Label("3D", systemImage: "rotate.3d")
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .labelStyle(.iconOnly)
+                    .disabled(model.cloud.count == 0)
+                }
+
                 Toggle(isOn: $model.mirrored) {
                     Label("Mirror", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                 }
@@ -119,7 +139,8 @@ struct ContentView: View {
             .controlSize(.large)
 
             if model.isCaptured {
-                Text("\(model.cloud.count.formatted()) points captured")
+                Text(show3D ? "\(model.cloud.count.formatted()) points · drag to turn, pinch to zoom, double-tap for full view"
+                            : "\(model.cloud.count.formatted()) points captured")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
